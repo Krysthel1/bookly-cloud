@@ -1,0 +1,66 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bookly-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    networks:
+      - bookly-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+    container_name: bookly-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    networks:
+      - bookly-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  # Base de datos aislada opcional solo para pruebas locales sin conexión a Supabase:
+  # Ejecutar con: docker compose --profile local-test-db up --build
+  postgres-test:
+    image: postgres:16-alpine
+    profiles: ["local-test-db"]
+    container_name: bookly-postgres-test
+    environment:
+      POSTGRES_USER: bookly
+      POSTGRES_PASSWORD: bookly_test_password
+      POSTGRES_DB: bookly_test
+    ports:
+      - "5433:5432"
+    networks:
+      - bookly-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookly -d bookly_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  bookly-net:
+    driver: bridge
