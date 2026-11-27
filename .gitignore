@@ -36,6 +36,8 @@ infrastructure/terraform/.terraform/
 infrastructure/terraform/*.tfstate
 infrastructure/terraform/*.tfstate.*
 infrastructure/terraform/*.tfvars
+!infrastructure/terraform/env-a.tfvars
+!infrastructure/terraform/env-b.tfvars
 infrastructure/terraform/.terraform.lock.hcl
 
 # IDEs & OS
