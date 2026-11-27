@@ -1,31 +1,57 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import { Download, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { adminApi } from '@/services/booklyApi'
 import { extractApiError } from '@/lib/api'
-import { formatDatePE, formatPEN } from '@/lib/utils'
+import { formatDatePE, formatPEN, ORDER_STATUS_LABELS } from '@/lib/utils'
+import type { AdminUser } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 
 export function AdminCustomersPage() {
   const [search, setSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<string>('')
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+
   const { data } = useQuery({
-    queryKey: ['admin-users', search],
-    queryFn: () => adminApi.listUsers({ search: search || undefined }),
+    queryKey: ['admin-users', search, activeFilter],
+    queryFn: () =>
+      adminApi.listUsers({
+        search: search || undefined,
+        is_active: activeFilter === '' ? undefined : activeFilter === 'true',
+      }),
+  })
+
+  const { data: userOrders } = useQuery({
+    queryKey: ['admin-user-orders', selectedUser?.id],
+    queryFn: () => adminApi.getUserOrders(selectedUser!.id),
+    enabled: Boolean(selectedUser),
   })
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-serif text-3xl font-bold">Clientes registrados</h1>
-        <Input
-          placeholder="Buscar por nombre o correo..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
+        <div className="flex flex-wrap gap-2">
+          <Input
+            placeholder="Buscar por nombre o correo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-60"
+          />
+          <select
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Todos los estados</option>
+            <option value="true">Activos</option>
+            <option value="false">Inactivos</option>
+          </select>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border">
@@ -38,6 +64,7 @@ export function AdminCustomersPage() {
               <th className="p-3">Pedidos</th>
               <th className="p-3">Total gastado</th>
               <th className="p-3">Registro</th>
+              <th className="p-3 text-right">Historial</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -55,11 +82,43 @@ export function AdminCustomersPage() {
                 <td className="p-3">{u.orders_count}</td>
                 <td className="p-3 font-semibold">{formatPEN(u.total_spent)}</td>
                 <td className="p-3 text-xs">{formatDatePE(u.created_at)}</td>
+                <td className="p-3 text-right">
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>
+                    <Eye className="h-4 w-4" />
+                    Compras
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <Dialog open={Boolean(selectedUser)} onOpenChange={(open) => !open && setSelectedUser(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Historial de {selectedUser?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm max-h-80 overflow-y-auto">
+            {!userOrders || userOrders.items.length === 0 ? (
+              <p className="text-muted-foreground">Este cliente aún no registra pedidos.</p>
+            ) : (
+              userOrders.items.map((o) => (
+                <div key={o.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="font-mono font-semibold">{o.order_code}</p>
+                    <p className="text-xs text-muted-foreground">{formatDatePE(o.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline">{ORDER_STATUS_LABELS[o.status] || o.status}</Badge>
+                    <p className="mt-1 font-semibold text-primary">{formatPEN(o.total)}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -195,24 +254,48 @@ export function AdminCouponsPage() {
 
 export function AdminReportsPage() {
   const [selected, setSelected] = useState<'sales' | 'inventory' | 'customers' | 'best-sellers'>('sales')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+
+  const params = {
+    start_date: startDate || undefined,
+    end_date: endDate || undefined,
+  }
+
   const { data } = useQuery({
-    queryKey: ['admin-report', selected],
-    queryFn: () => adminApi.getReport(selected),
+    queryKey: ['admin-report', selected, startDate, endDate],
+    queryFn: () => adminApi.getReport(selected, params),
   })
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-serif text-3xl font-bold">Reportes y exportación</h1>
-        <Button onClick={() => adminApi.downloadReportCsv(selected)}>
-          <Download className="h-4 w-4" />
-          Exportar CSV
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-36"
+            aria-label="Fecha inicio reporte"
+          />
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-36"
+            aria-label="Fecha fin reporte"
+          />
+          <Button onClick={() => adminApi.downloadReportCsv(selected, params)}>
+            <Download className="h-4 w-4" />
+            Exportar CSV
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {[
-          { id: 'sales' as const, label: 'Ventas' },
+          { id: 'sales' as const, label: 'Ventas e ingresos' },
           { id: 'inventory' as const, label: 'Inventario' },
           { id: 'customers' as const, label: 'Clientes' },
           { id: 'best-sellers' as const, label: 'Más vendidos' },

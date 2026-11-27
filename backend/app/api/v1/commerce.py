@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -99,9 +99,12 @@ def validate_coupon_endpoint(
 @router.post("/orders/checkout", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 def checkout(
     payload: CheckoutRequest,
+    idempotency_header: str | None = Header(default=None, alias="Idempotency-Key"),
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if idempotency_header and not payload.idempotency_key:
+        payload.idempotency_key = idempotency_header
     return order_service.checkout_order(db, current_user, payload)
 
 

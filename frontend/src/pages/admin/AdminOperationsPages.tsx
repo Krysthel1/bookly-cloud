@@ -1,30 +1,41 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trash2 } from 'lucide-react'
+import { Edit, Eye, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { adminApi, catalogApi } from '@/services/booklyApi'
 import { extractApiError } from '@/lib/api'
-import { formatDatePE, formatPEN, ORDER_STATUS_LABELS } from '@/lib/utils'
+import { formatDatePE, formatPEN, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils'
+import type { Author, Category, Order } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
 
 export function AdminCategoriesPage() {
   const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [editing, setEditing] = useState<Category | null>(null)
+
   const { data } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => catalogApi.getCategories(),
+    queryKey: ['admin-categories', search, page],
+    queryFn: () => catalogApi.getCategories({ search: search || undefined, page, page_size: 12 }),
   })
 
   const createMutation = useMutation({
-    mutationFn: () => adminApi.createCategory({ name, description }),
+    mutationFn: () =>
+      editing
+        ? adminApi.updateCategory(editing.id, { name, description })
+        : adminApi.createCategory({ name, description }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+      setEditing(null)
       setName('')
       setDescription('')
-      toast.success('Categoría creada')
+      toast.success(editing ? 'Categoría actualizada' : 'Categoría creada')
     },
     onError: (err) => toast.error(extractApiError(err)),
   })
@@ -32,6 +43,7 @@ export function AdminCategoriesPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteCategory(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
       toast.success('Categoría desactivada')
     },
@@ -39,7 +51,19 @@ export function AdminCategoriesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-serif text-3xl font-bold">Categorías</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-serif text-3xl font-bold">Categorías</h1>
+        <Input
+          placeholder="Buscar categoría..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          className="max-w-xs"
+        />
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -60,7 +84,20 @@ export function AdminCategoriesPage() {
           onChange={(e) => setDescription(e.target.value)}
           className="flex-1 min-w-[220px]"
         />
-        <Button type="submit">Agregar</Button>
+        <Button type="submit">{editing ? 'Actualizar' : 'Agregar'}</Button>
+        {editing && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setEditing(null)
+              setName('')
+              setDescription('')
+            }}
+          >
+            Cancelar
+          </Button>
+        )}
       </form>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -71,35 +108,81 @@ export function AdminCategoriesPage() {
               <p className="text-xs text-muted-foreground">{cat.description}</p>
               <p className="mt-2 text-xs text-primary">{cat.books_count} libros</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(cat.id)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Editar categoría"
+                onClick={() => {
+                  setEditing(cat)
+                  setName(cat.name)
+                  setDescription(cat.description || '')
+                }}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Desactivar categoría"
+                onClick={() => deleteMutation.mutate(cat.id)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
+
+      {data && data.meta.total_pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            Anterior
+          </Button>
+          <span className="self-center text-xs text-muted-foreground">
+            Página {data.meta.page} de {data.meta.total_pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= data.meta.total_pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Siguiente
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
 
 export function AdminAuthorsPage() {
   const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [name, setName] = useState('')
   const [nationality, setNationality] = useState('')
   const [biography, setBiography] = useState('')
+  const [editing, setEditing] = useState<Author | null>(null)
 
   const { data } = useQuery({
-    queryKey: ['authors-all'],
-    queryFn: () => catalogApi.getAuthors({ page_size: 100 }),
+    queryKey: ['admin-authors', search, page],
+    queryFn: () => catalogApi.getAuthors({ search: search || undefined, page, page_size: 12 }),
   })
 
-  const createMutation = useMutation({
-    mutationFn: () => adminApi.createAuthor({ name, nationality, biography }),
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      editing
+        ? adminApi.updateAuthor(editing.id, { name, nationality, biography })
+        : adminApi.createAuthor({ name, nationality, biography }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-authors'] })
       queryClient.invalidateQueries({ queryKey: ['authors-all'] })
+      setEditing(null)
       setName('')
       setNationality('')
       setBiography('')
-      toast.success('Autor creado')
+      toast.success(editing ? 'Autor actualizado' : 'Autor creado')
     },
     onError: (err) => toast.error(extractApiError(err)),
   })
@@ -107,6 +190,7 @@ export function AdminAuthorsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteAuthor(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-authors'] })
       queryClient.invalidateQueries({ queryKey: ['authors-all'] })
       toast.success('Autor desactivado')
     },
@@ -114,11 +198,23 @@ export function AdminAuthorsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-serif text-3xl font-bold">Autores</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-serif text-3xl font-bold">Autores</h1>
+        <Input
+          placeholder="Buscar autor..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          className="max-w-xs"
+        />
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          createMutation.mutate()
+          saveMutation.mutate()
         }}
         className="grid gap-3 rounded-xl border bg-card/40 p-4 sm:grid-cols-3"
       >
@@ -133,7 +229,25 @@ export function AdminAuthorsPage() {
           value={nationality}
           onChange={(e) => setNationality(e.target.value)}
         />
-        <Button type="submit">Crear autor</Button>
+        <div className="flex gap-2">
+          <Button type="submit" className="flex-1">
+            {editing ? 'Actualizar autor' : 'Crear autor'}
+          </Button>
+          {editing && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditing(null)
+                setName('')
+                setNationality('')
+                setBiography('')
+              }}
+            >
+              Cancelar
+            </Button>
+          )}
+        </div>
         <Textarea
           placeholder="Biografía breve"
           value={biography}
@@ -150,12 +264,51 @@ export function AdminAuthorsPage() {
               <p className="text-xs text-muted-foreground">{a.nationality || 'Internacional'}</p>
               <p className="mt-1 text-xs text-primary">{a.books_count} títulos</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(a.id)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Editar autor"
+                onClick={() => {
+                  setEditing(a)
+                  setName(a.name)
+                  setNationality(a.nationality || '')
+                  setBiography(a.biography || '')
+                }}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Desactivar autor"
+                onClick={() => deleteMutation.mutate(a.id)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
+
+      {data && data.meta.total_pages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            Anterior
+          </Button>
+          <span className="self-center text-xs text-muted-foreground">
+            Página {data.meta.page} de {data.meta.total_pages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= data.meta.total_pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Siguiente
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -302,6 +455,7 @@ export function AdminInventoryPage() {
 export function AdminOrdersPage() {
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null)
 
   const { data } = useQuery({
     queryKey: ['admin-orders', statusFilter],
@@ -355,6 +509,7 @@ export function AdminOrdersPage() {
               <th className="p-3">Total</th>
               <th className="p-3">Estado</th>
               <th className="p-3">Cambiar estado</th>
+              <th className="p-3 text-right">Detalle</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -395,12 +550,46 @@ export function AdminOrdersPage() {
                       <span className="text-xs text-muted-foreground">Estado final</span>
                     )}
                   </td>
+                  <td className="p-3 text-right">
+                    <Button variant="ghost" size="icon" onClick={() => setDetailOrder(o)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+
+      <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => !open && setDetailOrder(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pedido {detailOrder?.order_code}</DialogTitle>
+          </DialogHeader>
+          {detailOrder && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-lg border bg-card/40 p-3 text-xs space-y-1">
+                <p><strong>Cliente:</strong> {detailOrder.customer_name} ({detailOrder.customer_email})</p>
+                <p><strong>Envío:</strong> {detailOrder.shipping_address_snapshot.street_address}, {detailOrder.shipping_address_snapshot.district}</p>
+                <p><strong>Pago:</strong> {PAYMENT_METHOD_LABELS[detailOrder.payment?.method || ''] || '—'} ({detailOrder.payment?.status})</p>
+              </div>
+              <div className="space-y-2">
+                {detailOrder.items.map((item) => (
+                  <div key={item.id} className="flex justify-between border-b pb-1.5">
+                    <span>{item.quantity}x {item.book_title_snapshot}</span>
+                    <span className="font-medium">{formatPEN(item.line_total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between font-bold text-base">
+                <span>Total</span>
+                <span className="text-primary">{formatPEN(detailOrder.total)}</span>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

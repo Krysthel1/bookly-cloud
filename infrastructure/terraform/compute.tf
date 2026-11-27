@@ -9,6 +9,16 @@ resource "aws_launch_template" "backend" {
 
   vpc_security_group_ids = [aws_security_group.backend.id]
 
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 20
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required" # IMDSv2 obligatorio

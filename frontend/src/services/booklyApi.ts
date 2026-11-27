@@ -53,13 +53,13 @@ export const catalogApi = {
     const { data } = await apiClient.post<Review>(`/books/${idOrSlug}/reviews`, payload)
     return data
   },
-  getCategories: async () => {
+  getCategories: async (params?: { search?: string; page?: number; page_size?: number }) => {
     const { data } = await apiClient.get<PaginatedResponse<Category>>('/categories', {
-      params: { page_size: 50 },
+      params: { page_size: 50, ...params },
     })
     return data
   },
-  getAuthors: async (params?: { featured?: boolean; search?: string; page_size?: number }) => {
+  getAuthors: async (params?: { featured?: boolean; search?: string; page?: number; page_size?: number }) => {
     const { data } = await apiClient.get<PaginatedResponse<Author>>('/authors', {
       params: { page_size: 50, ...params },
     })
@@ -123,7 +123,9 @@ export const ordersApi = {
     notes?: string
     idempotency_key: string
   }) => {
-    const { data } = await apiClient.post<Order>('/orders/checkout', payload)
+    const { data } = await apiClient.post<Order>('/orders/checkout', payload, {
+      headers: { 'Idempotency-Key': payload.idempotency_key },
+    })
     return data
   },
   listMine: async (page = 1) => {
@@ -251,8 +253,12 @@ export const adminApi = {
     const { data } = await apiClient.patch<Order>(`/admin/orders/${id}/status`, { status, reason })
     return data
   },
-  listUsers: async (params?: { search?: string; page?: number }) => {
+  listUsers: async (params?: { search?: string; is_active?: boolean; page?: number }) => {
     const { data } = await apiClient.get<PaginatedResponse<AdminUser>>('/admin/users', { params })
+    return data
+  },
+  getUserOrders: async (userId: string) => {
+    const { data } = await apiClient.get<PaginatedResponse<Order>>(`/admin/users/${userId}/orders`)
     return data
   },
   listCoupons: async () => {
@@ -273,15 +279,22 @@ export const adminApi = {
     })
     return data
   },
-  getReport: async (reportType: 'sales' | 'inventory' | 'customers' | 'best-sellers') => {
+  getReport: async (
+    reportType: 'sales' | 'inventory' | 'customers' | 'best-sellers',
+    params?: { start_date?: string; end_date?: string },
+  ) => {
     const { data } = await apiClient.get<{ report: string; count: number; rows: Record<string, unknown>[] }>(
       `/admin/reports/${reportType}`,
+      { params },
     )
     return data
   },
-  downloadReportCsv: async (reportType: 'sales' | 'inventory' | 'customers' | 'best-sellers') => {
+  downloadReportCsv: async (
+    reportType: 'sales' | 'inventory' | 'customers' | 'best-sellers',
+    params?: { start_date?: string; end_date?: string },
+  ) => {
     const response = await apiClient.get(`/admin/reports/${reportType}`, {
-      params: { format: 'csv' },
+      params: { format: 'csv', ...params },
       responseType: 'blob',
     })
     const url = window.URL.createObjectURL(new Blob([response.data]))

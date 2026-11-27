@@ -423,13 +423,21 @@ def cancel_user_order(db: Session, user: Profile, order_id: UUID) -> OrderOut:
 
 
 def admin_list_orders(
-    db: Session, *, status_filter: str | None = None, search: str | None = None, page: int = 1, page_size: int = 15
+    db: Session,
+    *,
+    status_filter: str | None = None,
+    search: str | None = None,
+    user_id: UUID | None = None,
+    page: int = 1,
+    page_size: int = 15,
 ):
     query = (
         select(Order)
         .options(selectinload(Order.items), selectinload(Order.payment), selectinload(Order.user))
         .order_by(Order.created_at.desc())
     )
+    if user_id:
+        query = query.where(Order.user_id == user_id)
     if status_filter:
         query = query.where(Order.status == status_filter)
     if search:

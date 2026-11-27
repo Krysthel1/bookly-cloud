@@ -42,6 +42,24 @@ resource "aws_s3_bucket" "frontend" {
   force_destroy = false
 }
 
+resource "aws_s3_bucket_versioning" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "frontend" {
   bucket                  = aws_s3_bucket.frontend.id
   block_public_acls       = true
@@ -140,4 +158,33 @@ resource "aws_ecr_repository" "backend" {
   image_scanning_configuration {
     scan_on_push = true
   }
+}
+
+resource "aws_ecr_lifecycle_policy" "backend" {
+  repository = aws_ecr_repository.backend.name
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Eliminar imágenes sin etiqueta tras 7 días"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 2
+        description  = "Conservar las últimas 10 imágenes etiquetadas"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = { type = "expire" }
+      }
+    ]
+  })
 }

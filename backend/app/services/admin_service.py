@@ -363,11 +363,28 @@ def get_dashboard_metrics(
     )
 
 
-def generate_report_rows(db: Session, report_type: str) -> tuple[list[str], list[dict]]:
+def generate_report_rows(
+    db: Session,
+    report_type: str,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[list[str], list[dict]]:
     if report_type == "sales":
-        orders = db.scalars(
-            select(Order).options(selectinload(Order.user), selectinload(Order.payment)).order_by(Order.created_at.desc())
-        ).all()
+        query = (
+            select(Order)
+            .options(selectinload(Order.user), selectinload(Order.payment))
+            .order_by(Order.created_at.desc())
+        )
+        if start_date:
+            query = query.where(
+                Order.created_at >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            )
+        if end_date:
+            query = query.where(
+                Order.created_at <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+            )
+        orders = db.scalars(query).all()
         headers = ["order_code", "fecha", "cliente", "estado", "metodo_pago", "subtotal", "descuento", "envio", "total"]
         rows = [
             {
@@ -403,7 +420,16 @@ def generate_report_rows(db: Session, report_type: str) -> tuple[list[str], list
         return headers, rows
 
     if report_type == "customers":
-        users = db.scalars(select(Profile).where(Profile.deleted_at.is_(None)).order_by(Profile.created_at.desc())).all()
+        cust_query = select(Profile).where(Profile.deleted_at.is_(None)).order_by(Profile.created_at.desc())
+        if start_date:
+            cust_query = cust_query.where(
+                Profile.created_at >= datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+            )
+        if end_date:
+            cust_query = cust_query.where(
+                Profile.created_at <= datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+            )
+        users = db.scalars(cust_query).all()
         headers = ["id", "nombre", "email", "telefono", "activo", "fecha_registro"]
         rows = [
             {

@@ -254,6 +254,18 @@ def admin_user_detail(
     return user_service.admin_get_user_detail(db, user_id)
 
 
+@router.get("/users/{user_id}/orders", response_model=PaginatedResponse[OrderOut])
+def admin_user_orders(
+    user_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _admin: Profile = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    items, meta = order_service.admin_list_orders(db, user_id=user_id, page=page, page_size=page_size)
+    return PaginatedResponse(items=items, meta=meta)
+
+
 # --- Cupones y Descuentos ---
 @router.get("/coupons", response_model=list[CouponOut])
 def admin_list_coupons(
@@ -283,8 +295,16 @@ def admin_update_coupon(
 
 
 # --- Reportes (JSON o CSV) ---
-def _report_response(db: Session, report_type: str, fmt: str):
-    headers, rows = admin_service.generate_report_rows(db, report_type)
+def _report_response(
+    db: Session,
+    report_type: str,
+    fmt: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    headers, rows = admin_service.generate_report_rows(
+        db, report_type, start_date=start_date, end_date=end_date
+    )
     if fmt == "csv":
         csv_bytes = admin_service.export_csv_bytes(headers, rows)
         return Response(
@@ -298,10 +318,12 @@ def _report_response(db: Session, report_type: str, fmt: str):
 @router.get("/reports/sales")
 def report_sales(
     format: Literal["json", "csv"] = "json",
+    start_date: date | None = None,
+    end_date: date | None = None,
     _admin: Profile = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    return _report_response(db, "sales", format)
+    return _report_response(db, "sales", format, start_date=start_date, end_date=end_date)
 
 
 @router.get("/reports/inventory")
@@ -316,10 +338,12 @@ def report_inventory(
 @router.get("/reports/customers")
 def report_customers(
     format: Literal["json", "csv"] = "json",
+    start_date: date | None = None,
+    end_date: date | None = None,
     _admin: Profile = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    return _report_response(db, "customers", format)
+    return _report_response(db, "customers", format, start_date=start_date, end_date=end_date)
 
 
 @router.get("/reports/best-sellers")

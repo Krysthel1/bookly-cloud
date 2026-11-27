@@ -58,6 +58,24 @@ variable "enable_nat_gateway" {
   default     = true
 }
 
+variable "nat_gateway_count" {
+  description = "Cantidad de NAT Gateways (1 para entorno económico A, 2 para alta disponibilidad B)"
+  type        = number
+  default     = 2
+}
+
+variable "log_retention_days" {
+  description = "Retención en días para CloudWatch Logs (14 entorno económico, 30 HA)"
+  type        = number
+  default     = 30
+}
+
+variable "monthly_budget_usd" {
+  description = "Presupuesto mensual en USD para alertas AWS Budgets"
+  type        = number
+  default     = 200
+}
+
 variable "alarm_email" {
   description = "Correo opcional para notificaciones CloudWatch/SNS"
   type        = string
